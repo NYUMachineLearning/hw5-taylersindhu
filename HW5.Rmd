@@ -1,202 +1,138 @@
 ---
 title: 'Machine Learning 2019: Tree-Based Methods'
-author: "Sonali Narang"
+author: "Tayler Sindhu"
 date: "10/28/2019"
-output:
-  pdf_document: default
-  pdf: default
+output: html
 ---
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
-
-## Tree-Based Methods 
-
-Decision tree is a type of supervised learning algorithm that can be used in both regression and classification problems. Tree-based methods works for both categorical and continuous input and output variables.
-
-```{r load relevant libraries, include=FALSE}
-library(tidyverse)
-library(ISLR)
-library(tree)
-library(randomForest)
-library(MASS)
-library(gbm)
-
-```
-## The Carseats Dataset 
-
-400 Observations, 11 variables
-Response Variable: Sales/High 
-
-```{r The Carseats Dataset}
-data("Carseats")
-carseats = Carseats
-head(carseats)
-
-#convert quantitative variable Sales into a binary response 
-High = ifelse(carseats$Sales<=8, "No", "Yes")
-carseats = data.frame(carseats, High)
-
-head(carseats)
-```
-
-## Classification Tree
-
-Input variables (X) can be continuous or categorical.
-Response variable (Y) is categorical (usually binary): in this case Sales/High.
-
-```{r Classification Tree}
-#set seed to make results reproducible 
-set.seed(29)
-
-#split data into train and test subset (250 and 150 respectively)
-train = sample(1:nrow(carseats), 250)
-
-#Fit train subset of data to model 
-tree.carseats = tree(High~.-Sales, carseats, subset=train)
-summary(tree.carseats)
-
-#Visualize tree
-plot(tree.carseats)
-text(tree.carseats, pretty=0)
-
-#each of the terminal nodes are labeled Yes or No. The variables and the value of the splitting choice are shown at each terminal node. 
-
-#Use model on test set, predict class labels 
-tree.pred = predict(tree.carseats, carseats[-train,], type="class")
-
-#Misclassification table to evaluate error 
-with(carseats[-train,], table(tree.pred, High))
-
-#Calculate error by summing up the diagonals and dividing by number of total predictions
-mc = (71 + 42) / 150
-mc
-```
-
-## Pruning using cross-validation
-Pruning is a method to cut back the tree to prevent over-fitting. 
-
-```{r Pruning}
-#cross-validation to prune the tree using cv.tree
-cv.carseats = cv.tree(tree.carseats, FUN = prune.misclass)
-
-#Sizes of the trees as they were pruned back, the deviances as the pruning proceeded, and cost complexity parameter used in the process.
-cv.carseats
-
-#Visualize 
-plot(cv.carseats)
-
-#Prune tree to a size of 12 
-prune.carseats = prune.misclass(tree.carseats, best = 12)
-
-#Visualize tree 
-plot(prune.carseats)
-text(prune.carseats, pretty=0)
-
-#Evaluate on test set 
-tree.pred = predict(prune.carseats, carseats[-train,], type="class")
-
-#Misclassification 
-with(carseats[-train,], table(tree.pred, High))
-
-#Error 
-mc_pruning = (66 + 41) / 150
-mc_pruning
-
-##pruning did not increase misclassification error by too much and resulted in a simpler tree!!
-```
-Pruning did not increase misclassification error by too much and resulted in a simpler tree!!
-
-Decision trees suffer from high variance, meaning if you split the training data into 2 parts at random, and fit a decision tree to both halves, the results that you get could be very different.
-
-Bagging and boosting are technique used to reduce the variance of your predictions.
-
-## The Boston Housing Dataset 
-
-506 Observations, 14 variables
-Response Variable: medv (median value of owner-occupied homes for each suburb)
-
-```{r The Boston Housing Dataset}
-data("Boston")
-boston = Boston
-head(Boston)
-```
-
-## Bagging: Random Forest 
-
-Bagging involves creating multiple copies of the original training dataset using the bootstrap, fitting a separate decision tree to each copy, and then combining all of the trees in order to create a single predictive model. Each tree is built on a bootstrapped dataset, independent of the other trees.
-
-Random Forest: Each time a split in a tree is considered, a random sample of m predictors is chosen as split candidates from the full set of p predictors. The split is allowed to use only one of those m predictors.
-
-
-```{r Random Forest}
-#set seed for reproducibility 
-set.seed(29)
-
-#split into train and test sets (300 and 206 respectively)
-train = sample(1:nrow(boston), 300)
-
-#fit training subset of data to model 
-rf.boston = randomForest(medv~., data = boston, subset = train)
-rf.boston
-
-#summary of rf.boston gives information about the number of trees, the mean squared residuals (MSR), and the percentage of variance explained
-
-#No. of variables tried at each split: 4 
-#Each time the tree comes to split a node, 4 variables would be selected at random, then the split would be confined to 1 of those 4 variables.
-
-##Lets try a range of mtry (number of variables selected at random at each split)
-
-oob.err = double(13)
-test.err = double(13)
-
-#In a loop of mtry from 1 to 13, you first fit the randomForest to the train dataset
-for(mtry in 1:13){
-  fit = randomForest(medv~., data = boston, subset=train, mtry=mtry, ntree = 350)
-  oob.err[mtry] = fit$mse[350] ##extract Mean-squared-error 
-  pred = predict(fit, boston[-train,]) #predict on test dataset
-  test.err[mtry] = with(boston[-train,], mean( (medv-pred)^2 )) #compute test error
-}
-
-#Visualize 
-matplot(1:mtry, cbind(test.err, oob.err), pch = 23, col = c("red", "blue"), type = "b", ylab="Mean Squared Error")
-legend("topright", legend = c("OOB", "Test"), pch = 23, col = c("red", "blue"))
-```
-
-## Boosting 
-
-Boosting is another approach to improve the predictions resulting from a decision tree. Trees are grown sequentially: each tree is grown using information from previously grown trees. Each tree is fitted on a modified version of the original dataset.
-
-
-```{r Boosting}
-#Gradient Boosting Model
-boost.boston = gbm(medv~., data = boston[train,], distribution = "gaussian", n.trees = 10000, shrinkage = 0.01, interaction.depth = 4)
-
-#Variable Importance Plot
-summary(boost.boston)
-
-#Visualize important variables of interest
-plot(boost.boston,i="lstat")
-plot(boost.boston,i="rm")
-
-#Predict on test set
-n.trees = seq(from = 100, to = 10000, by = 100)
-predmat = predict(boost.boston, newdata = boston[-train,], n.trees = n.trees)
-dim(predmat)
-
-#Visualize Boosting Error Plot
-boost.err = with(boston[-train,], apply( (predmat - medv)^2, 2, mean) )
-plot(n.trees, boost.err, pch = 23, ylab = "Mean Squared Error", xlab = "# Trees", main = "Boosting Test Error")
-abline(h = min(test.err), col = "red")
-
-```
 
 ## Homework
 
 1. Attempt a regression tree-based method (not covered in this tutorial) on a reasonable dataset of your choice. Explain the results. 
 
+## Question 1: Cubist Model
+```{r set up, include=FALSE}
+library(mlbench)
+library(Cubist)
+library(caret)
+library(ipred)
+library(gbm)
+```
+
+```{r Question 1}
+data("Vehicle")
+
+# Cubist tree-based model using vehicle compactness as outcome
+
+# make training and test sets
+set.seed(35345)
+train_size <- floor(0.75 * nrow(Vehicle))
+train_pos <- sample(seq_len(nrow(Vehicle)), size = train_size)
+
+train_vehicle <- Vehicle[train_pos, ]
+test_vehicle <- Vehicle[-train_pos, ]
+
+# use compactness (Comp) as dependent variable
+# Make model
+set.seed(123)
+cubist <- cubist(train_vehicle[,c(2:19)],train_vehicle[,1], control=cubistControl())
+cubist
+
+# Visualize model according to rules
+dotplot(cubist, main="Conditions")
+
+# Summarize model
+summary(cubist)
+
+# predict on test set
+test.predict <- predict(cubist, test_vehicle)
+
+# R^2 value
+cor(test.predict, test_vehicle$Comp)^2
+
+# RMSE per documentation
+sqrt(mean((test.predict - test_vehicle$Comp)^2))
+
+# Plot actual vs. predicted values
+ggplot() +
+  geom_point(data = test_vehicle, aes(x=test.predict, y=Comp)) +
+  xlab("Observed Compactness") +
+  ylab("Predicted Compactness") + 
+  ggtitle("Cubist model: Observed Compactness vs. Predicted Compactness") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+###Cubist Model: Explain Results
+ This cubist model predicts the compactness of a vehicle type based on other vehicle characteristics. It is a form of regression tree in which trees are converted to rules. The model incorporates pruning, and a boosting-like procedure when the number of committees is greater than one. The final model used 1 committee and 3 rules. Visually, there is reasonably strong correlation between observed and predicted glucose values, and the R squared value is reasonably high at 0.85. The Holl.ra (hollows ratio) variable and Kurt.Maxis (kurtosis about major axis) variable were used in all of the models used to create the final model.
+ 
 2. Attempt both a bagging and boosting method on a reasonable dataset of your choice. Explain the results.
+
+## Question 2.1: Bagging Method
+```{r Question 2.2}
+# bagging method
+
+# Continuing to use vehicle dataset, but using class as outcome.
+# Set model to predict vehicle class
+bg <- bagging(Class ~ ., data=Vehicle)
+predict.bg <- predict(bg, test_vehicle)
+
+# Looking at variable importance averaged over all bagged trees
+varImp(bg)
+
+# Confusion matrix on test set to evaluate error 
+#There are multiple classes
+confusionMatrix(test_vehicle$Class, predict.bg)
+```
+### Bagging Method: Results Explanation
+The bagging model showed a 99.1% accuracy in predicting vehical class based on other vehicle variables. In this model, the scaled variance along major axis (Sc.Var.maxis) was the most important variable (based on the decrease in residual sum of squares).
+
+##Question 2.2: Boosting Method
+```{r Question 2.2}
+# boosting method
+
+#Gradient Boosting Model
+# Regression, again using compactness (Compact) as outcome.
+bst <- gbm(Comp ~ ., data = train_vehicle, distribution = "gaussian", n.trees = 10000)
+bst
+
+names(bst)
+
+# Looking at variable importance using bar plot showing all predictors
+variable_imp <- summary.gbm(bst, plotit=FALSE, order=TRUE)
+
+ggplot(data = variable_imp, aes(var, rel.inf))+
+  geom_bar(stat="identity")+ 
+  theme(axis.text.x = element_text(angle = 300))
+
+# Visualize marginal effect of most important variable
+plot.gbm(bst, i.var="Sc.Var.Maxis")
+
+# Predict using test set, using code in class
+n.trees = seq(from = 100, to = 10000, by = 0100)
+predmat_veh <- predict(bst, newdata= test_vehicle, n.trees=n.trees) 
+
+# Boosting Error Plot, using code in class
+bst.err <- with(train_vehicle, apply( (predmat_veh - Comp)^2, 2, mean) )
+plot(n.trees, bst.err, ylab = "Mean Squared Error", xlab = "# Trees", main = "Boosting Test Error")
+abline(h = min(bst.err), col = "red")
+
+# 1500 trees resulted in the least mean squared error, so will rerun prediction function using this value.
+predmat_veh <- predict(bst, newdata= test_vehicle, n.trees= 1500) 
+
+# R squared for test set
+cor(predmat_veh, test_vehicle$Comp)^2
+
+# RMSE for test set
+sqrt(mean((predmat_veh - test_vehicle$Comp)^2))
+
+# Plot actual vs. predicted values
+ggplot() +
+  geom_point(data = test_vehicle, aes(x=predmat_veh, y=Comp)) +
+  xlab("Observed Compactness") +
+  ylab("Predicted Compactness") + 
+  ggtitle("Boosting Method: Observed Compactness vs. Predicted Compactness") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+### Boosting Method: Results Explanation
+This model performed slightly worse than the cbist model in ways such as the R squared value (0.827 versus 0.85). The RMSE was also slightly higher (3.42 versus 3.20.) Sc.Var.Maxis was the most important variable by far (accounts for the most reduction of squared error.)
 
 
 

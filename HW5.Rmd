@@ -2,7 +2,7 @@
 title: 'Machine Learning 2019: Tree-Based Methods'
 author: "Tayler Sindhu"
 date: "10/28/2019"
-output: html
+output: html_document
 ---
 
 ## Homework
@@ -66,7 +66,7 @@ ggplot() +
 2. Attempt both a bagging and boosting method on a reasonable dataset of your choice. Explain the results.
 
 ## Question 2.1: Bagging Method
-```{r Question 2.2}
+```{r Question 2.1}
 # bagging method
 
 # Continuing to use vehicle dataset, but using class as outcome.
